@@ -3,7 +3,7 @@ import time
 import math
 import serial
 import threading
-from gpiozero import Button
+from gpiozero import Button, OutputDevice
 
 # --- CONFIGURACIÓN FÍSICA Y MODBUS ---
 DIAMETRO_RUEDA_M = 0.254 
@@ -25,11 +25,13 @@ VEL_RPM = 30
 PIN_PULSADOR_INICIO = 17     # GPIO 17 (Pin físico 11)
 PIN_PULSADOR_DETENER = 27    # GPIO 27 (Pin físico 13)
 PIN_PARADA_EMERGENCIA = 22   # GPIO 22 (Pin físico 15 - Contacto NC)
+PIN_RELE_EMERGENCIA = 10     # GPIO 10 (Pin físico 19 - Salida de relé)
 
 # Variables de estado global
 ejecutando_secuencia = False
 detener_solicitado = False
 ser_global = None
+rele_emergencia = None
 
 def calcular_crc(data):
     crc = 0xFFFF
@@ -145,8 +147,12 @@ def rutina_perforacion():
 
 # --- MANEJADORES DE EVENTOS DE BOTONES ---
 def presionar_inicio():
-    global ejecutando_secuencia, detener_solicitado, ser_global
-    # Si la parada de emergencia está abierta (pulsada), no permitir iniciar
+    global ejecutando_secuencia, detener_solicitado, ser_global, rele_emergencia
+    # Evitar iniciar si la parada de emergencia está activada (relé encendido)
+    if rele_emergencia and rele_emergencia.is_active:
+        print("\n[!] No se puede iniciar: La parada de emergencia está activada.")
+        return
+
     if not ejecutando_secuencia:
         print(f"\n[>] Pulsador 1 Presionado: Limpiando errores e iniciando secuencia ({DISTANCIA_MOVIMIENTO}m)...")
         detener_solicitado = False
@@ -165,25 +171,38 @@ def presionar_detener():
         detener_motores(ser_global)
 
 def parada_emergencia_activada():
-    global ejecutando_secuencia, detener_solicitado, ser_global
+    global ejecutando_secuencia, detener_solicitado, ser_global, rele_emergencia
     print("\n[!] parada de emergencia activada")
     detener_solicitado = True
     ejecutando_secuencia = False
     if ser_global:
         detener_motores(ser_global)
+    if rele_emergencia:
+        rele_emergencia.on()  # Activa el relé en GPIO 10
+
+def parada_emergencia_liberada():
+    global rele_emergencia
+    if rele_emergencia:
+        rele_emergencia.off() # Desactiva el relé cuando se restablece la emergencia
 
 def main():
-    global ser_global
+    global ser_global, rele_emergencia
 
     btn_inicio = Button(PIN_PULSADOR_INICIO, pull_up=True, bounce_time=0.1)
     btn_detener = Button(PIN_PULSADOR_DETENER, pull_up=True, bounce_time=0.1)
     btn_emergencia = Button(PIN_PARADA_EMERGENCIA, pull_up=True, bounce_time=0.05)
+    
+    # Configurar GPIO 10 como salida digital para el relé (inicia apagado / 0)
+    rele_emergencia = OutputDevice(PIN_RELE_EMERGENCIA, active_high=True, initial_value=False)
 
     btn_inicio.when_pressed = presionar_inicio
     btn_detener.when_pressed = presionar_detener
     
-    # Al ser un contacto NC conectado a GND, al presionarlo se abre el circuito (se libera de GND)
+    # Al ser un contacto NC:
+    # when_released -> Se abre el circuito (se presiona la seta de emergencia)
+    # when_pressed -> Se cierra el circuito de nuevo (se rearmar/gira la seta)
     btn_emergencia.when_released = parada_emergencia_activada
+    btn_emergencia.when_pressed = parada_emergencia_liberada
 
     try:
         ser_global = serial.Serial(PORT, BAUDRATE, timeout=1)
@@ -192,7 +211,7 @@ def main():
         print(f"Distancia configurada por ciclo: {DISTANCIA_MOVIMIENTO}m")
         print("Pulsador 1 (GPIO 17): Iniciar ciclo continuo")
         print("Pulsador 2 (GPIO 27): Detener motores/secuencia")
-        print("Parada de Emergencia (GPIO 22 - NC): Activa bloqueo inmediato")
+        print("Parada de Emergencia (GPIO 22 - NC): Activa bloqueo y relé en GPIO 10")
         print("Presiona Ctrl+C en la terminal para cerrar el programa.")
         print("=================================================")
 
@@ -208,6 +227,10 @@ def main():
             detener_motores(ser_global)
             ser_global.close()
             print("Puerto serie cerrado.")
+        if rele_emergencia:
+            rele_emergencia.off()
+            rele_emergencia.close()
+            print("Salida de relé apagada y limpiada.")
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     main()
