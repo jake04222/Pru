@@ -149,7 +149,7 @@ def rutina_perforacion():
 def presionar_inicio():
     global ejecutando_secuencia, detener_solicitado, ser_global, rele_emergencia
     # Evitar iniciar si la parada de emergencia está activada (relé encendido)
-    if rele_emergencia and rele_emergencia.is_active:
+    if not rele_emergencia and rele_emergencia.is_false:
         print("\n[!] No se puede iniciar: La parada de emergencia está activada.")
         return
 
@@ -178,12 +178,12 @@ def parada_emergencia_activada():
     if ser_global:
         detener_motores(ser_global)
     if rele_emergencia:
-        rele_emergencia.on()  # Activa el relé en GPIO 10
+        rele_emergencia.off()  # Activa el relé en GPIO 10
 
 def parada_emergencia_liberada():
     global rele_emergencia
     if rele_emergencia:
-        rele_emergencia.off() # Desactiva el relé cuando se restablece la emergencia
+        rele_emergencia.on() # Desactiva el relé cuando se restablece la emergencia
 
 def main():
     global ser_global, rele_emergencia
