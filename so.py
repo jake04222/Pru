@@ -12,9 +12,6 @@ BAUD_ZLTECH=115200
 SERVO_ID=2
 BAUD_SERVO=9600
 
-# GPIO10 no usado
-# GPIO10
-
 # Llantas
 DIAMETRO_RUEDA_M=0.254
 PPR=16384
@@ -24,7 +21,12 @@ DISTANCIA_MOVIMIENTO=0.1
 RAMPA_MS=500
 VEL_RPM=30
 
+# Brocas
+TIEMPO_BROCAS=5
+
 ser=None
+parar=False
+emergencia_activa=False
 
 def abrir_puerto(baudrate,parity='N'):
     global ser
@@ -56,13 +58,10 @@ def ascii_write(reg,val):
     d=bytes([SERVO_ID,6,reg>>8,reg&255,val>>8,val&255])
     f=b":"+d.hex().upper().encode()
     f+=f"{lrc(d):02X}".encode()+b"\r\n"
-
     ser.write(f)
     ser.flush()
     time.sleep(0.15)
-
-    r=ser.read(50)
-    return bool(r)
+    return bool(ser.read(50))
 
 def int_a_4bytes(n):
     b=n.to_bytes(4,'big',signed=True)
@@ -81,6 +80,7 @@ def arrancar_llantas():
     rtu(bytearray([SLAVE_ID,6,0x20,0x0D,0,1]))
 
     r=RAMPA_MS.to_bytes(2,'big')
+
     for reg in [0x80,0x81,0x82,0x83]:
         rtu(bytearray([SLAVE_ID,6,0x20,reg])+r)
 
@@ -96,117 +96,123 @@ def arrancar_llantas():
 
     rtu(bytearray([SLAVE_ID,6,0x20,0x0E,0,0x10]))
 
-    print("LLANTAS: ARRANCADAS")
-
 def frenar_llantas():
     abrir_puerto(BAUD_ZLTECH)
-
     rtu(bytearray([SLAVE_ID,6,0x20,0x0E,0,7]))
-
-    print("LLANTAS: DETENIDAS")
 
 # ESTUN
 
 def arrancar_brocas():
     abrir_puerto(BAUD_SERVO,'O')
 
-    print("ESTUN: SERVO ON")
-
     if not ascii_write(0x1023,1):
-        print("ERROR ESTUN")
         return False
 
     time.sleep(0.3)
 
-    print("ESTUN: JOG")
-
     if not ascii_write(0x1024,1):
-        print("ERROR JOG")
         return False
 
-    print("BROCAS: ARRANCADAS")
     return True
 
 def frenar_brocas():
     abrir_puerto(BAUD_SERVO,'O')
-
     ascii_write(0x1024,0)
     time.sleep(0.3)
     ascii_write(0x1023,0)
 
-    print("BROCAS: DETENIDAS")
-
-# SECUENCIAS
-
-def arrancar_maquina():
-    print("\nARRANQUE")
-
-    # 1. Arrancan llantas
-    arrancar_llantas()
-
-    # 2. Espera antes de arrancar brocas
-    time.sleep(1)
-
-    # 3. Arrancan brocas
-    arrancar_brocas()
-
-    print("MAQUINA EN MARCHA")
+# PARADA
 
 def parar_maquina():
-    print("\nPARO")
-
-    # 1. Detener brocas
     frenar_brocas()
-
-    # 2. Detener llantas
-    time.sleep(0.3)
     frenar_llantas()
 
-    print("MAQUINA DETENIDA")
-
 def emergencia():
-    print("\n!!! PARADA DE EMERGENCIA !!!")
-
-    # Detener brocas inmediatamente
+    global emergencia_activa
+    emergencia_activa=True
+    print("!!! PARADA DE EMERGENCIA !!!")
     try:
         frenar_brocas()
     except:
         pass
-
-    # Detener llantas
     try:
         frenar_llantas()
     except:
         pass
 
-    print("EMERGENCIA: MAQUINA DETENIDA")
+# CICLO
+
+def ciclo():
+    global parar,emergencia_activa
+
+    parar=False
+    emergencia_activa=False
+
+    print("\nMAQUINA EN MARCHA")
+
+    while not parar and not emergencia_activa:
+
+        print("\n1. LLANTAS -> 10 cm")
+        arrancar_llantas()
+
+        # Tiempo aproximado para recorrer 10 cm
+        tiempo_mov=DISTANCIA_MOVIMIENTO/(VEL_RPM*CIRCUNFERENCIA/60)
+
+        inicio=time.time()
+
+        while time.time()-inicio<tiempo_mov:
+            if parar or emergencia_activa:
+                break
+            time.sleep(0.05)
+
+        frenar_llantas()
+
+        if parar or emergencia_activa:
+            break
+
+        print("2. BROCAS -> 5 segundos")
+        arrancar_brocas()
+
+        inicio=time.time()
+
+        while time.time()-inicio<TIEMPO_BROCAS:
+            if parar or emergencia_activa:
+                break
+            time.sleep(0.05)
+
+        frenar_brocas()
+
+    parar_maquina()
+    print("\nMAQUINA DETENIDA")
 
 # PRINCIPAL
 
 def main():
-    global ser
+    global parar
 
     try:
-        print("\n=== CONTROL DE MAQUINA ===")
+        print("\n=== CONTROL MAQUINA ===")
         print("A = ARRANQUE")
         print("B = PARO")
         print("P = EMERGENCIA")
         print("Q = SALIR")
-        print("==========================")
+        print("=======================")
 
         while True:
             tecla=input("> ").strip().upper()
 
             if tecla=="A":
-                arrancar_maquina()
+                ciclo()
 
             elif tecla=="B":
+                parar=True
                 parar_maquina()
 
             elif tecla=="P":
                 emergencia()
 
             elif tecla=="Q":
+                parar=True
                 emergencia()
                 break
 
@@ -214,10 +220,10 @@ def main():
                 print("Tecla no valida")
 
     except KeyboardInterrupt:
-        print("\nPrograma detenido")
+        emergencia()
 
     except Exception as e:
-        print("\nERROR:",e)
+        print("ERROR:",e)
 
     finally:
         try:
