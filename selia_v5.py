@@ -414,14 +414,14 @@ GPIO.setmode(GPIO.BCM)
 GPIO.setup(GPIO_START,GPIO.IN,pull_up_down=GPIO.PUD_UP)
 GPIO.setup(GPIO_STOP,GPIO.IN,pull_up_down=GPIO.PUD_UP)
 GPIO.setup(GPIO_EMERGENCY,GPIO.IN,pull_up_down=GPIO.PUD_UP)
-GPIO.setup(GPIO_EMERGENCY_OUT,GPIO.OUT,initial=GPIO.LOW)
+GPIO.setup(GPIO_EMERGENCY_OUT,GPIO.OUT,initial=GPIO.HIGH)
 
 # Llantas
 DIAMETRO_RUEDA_M=0.254
 PPR=16384
 CIRCUNFERENCIA=math.pi*DIAMETRO_RUEDA_M
 PULSOS_POR_METRO=PPR/CIRCUNFERENCIA
-DISTANCIA_MOVIMIENTO=0.1
+DISTANCIA_MOVIMIENTO=0.5
 RAMPA_MS=500
 VEL_RPM=30
 
@@ -586,9 +586,9 @@ def leer_entradas():
             return 'START'
 
     # GPIO27 = paro
-    if GPIO.input(GPIO_STOP)==GPIO.LOW:
+    if GPIO.input(GPIO_STOP)==GPIO.HIGH:
         time.sleep(0.05)
-        if GPIO.input(GPIO_STOP)==GPIO.LOW:
+        if GPIO.input(GPIO_STOP)==GPIO.HIGH:
             return 'STOP'
 
     return None
@@ -627,7 +627,7 @@ def emergencia():
         pass
 
     # Activa salida GPIO10
-    GPIO.output(GPIO_EMERGENCY_OUT,GPIO.HIGH)
+    GPIO.output(GPIO_EMERGENCY_OUT,GPIO.LOW)
 
     print("GPIO10: ACTIVADO")
 
@@ -660,7 +660,7 @@ def ciclo():
     emergencia_activa=False
 
     # Asegurar salida de emergencia apagada
-    GPIO.output(GPIO_EMERGENCY_OUT,GPIO.LOW)
+    GPIO.output(GPIO_EMERGENCY_OUT,GPIO.HIGH)
 
     print("\nMAQUINA EN MARCHA")
 
