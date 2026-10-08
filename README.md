@@ -6,4 +6,6 @@ Selia_v4.py ( las llantas solo avanzan 10cm, quedan habilitados los pulsadores y
 
 Selia_v5.py ( Funciona la secuencia de la maquina con las llantas ZLETCH (hex) y el servomotor estun (ascii))
 
+sp.py (funcionamiento de Selia_v5.py con teclas de la terminal y no pulsadores)
+
 Selia_v6.py ( Se agrega funcionamiento de baja del actuador, se corrigen errores de la version 5.0 como son los tiempos de espera de los pulsadores)
